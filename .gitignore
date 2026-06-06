@@ -1,0 +1,33 @@
+#不上传编译产物、固件包、日志、备份文件。
+# build output 
+build/
+*.swu
+*.ext4
+*.img
+*.bin
+
+# compiled binaries
+services/ota_service/ota_slotctl/ota_slotctl
+*.o
+*.ko
+*.so
+*.a
+
+# logs
+logs/
+*.log
+
+# backup files
+*~
+*.bak
+*.tmp
+*-副本.c
+*副本*
+
+# editor
+.vscode/
+.idea/
+
+# system
+.DS_Store
+Thumbs.db
