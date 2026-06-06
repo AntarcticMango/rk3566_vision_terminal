@@ -1,0 +1,380 @@
+diff --git a/board/rockchip/common/wifi/etc/init.d/S37wifi_auto b/board/rockchip/common/wifi/etc/init.d/S37wifi_auto
+new file mode 100755
+index 00000000..2d3492ae
+--- /dev/null
++++ b/board/rockchip/common/wifi/etc/init.d/S37wifi_auto
+@@ -0,0 +1,213 @@
++#!/bin/sh
++
++IFACE="${WIFI_IFACE:-wlan0}"
++CONF="/etc/wpa_supplicant.conf"
++CTRL="/var/run/wpa_supplicant"
++LOG="/tmp/wifi_auto.log"
++STATUS="/tmp/wifi_status"
++PIDFILE="/var/run/wifi_auto_worker.pid"
++
++msg()
++{
++    echo "[wifi_auto] $*" >> "$LOG"
++    echo "[wifi_auto] $*" > /dev/console
++}
++
++set_status()
++{
++    echo "$*" > "$STATUS"
++    msg "$*"
++}
++
++get_ip()
++{
++    ip addr show "$IFACE" 2>/dev/null | awk '/inet /{print $2; exit}'
++}
++
++start_worker()
++{
++    # 防止重复启动多个后台连接任务
++    if [ -f "$PIDFILE" ]; then
++        OLD_PID="$(cat "$PIDFILE" 2>/dev/null)"
++        if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
++            msg "WiFi worker already running, pid=$OLD_PID"
++            exit 0
++        fi
++    fi
++
++    "$0" worker >/dev/null 2>&1 &
++    echo $! > "$PIDFILE"
++
++    msg "WiFi auto connect started in background, pid=$(cat "$PIDFILE")"
++    exit 0
++}
++
++worker()
++{
++    msg "Worker started."
++
++    # 等待 wlan0 出现，但只在后台等，不阻塞开机
++    i=0
++    while [ $i -lt 10 ]; do
++        if [ -e "/sys/class/net/$IFACE" ]; then
++            break
++        fi
++        sleep 1
++        i=$((i + 1))
++    done
++
++    if [ ! -e "/sys/class/net/$IFACE" ]; then
++        set_status "FAILED: $IFACE not found. WiFi driver may not be loaded. Check: ifconfig -a"
++        rm -f "$PIDFILE"
++        exit 0
++    fi
++
++    if [ ! -s "$CONF" ]; then
++        set_status "NO_CONFIG: $CONF not found or empty. Run: wifi_setup \"SSID\" \"PASSWORD\""
++        rm -f "$PIDFILE"
++        exit 0
++    fi
++
++    mkdir -p "$CTRL"
++
++    ifconfig "$IFACE" up 2>/dev/null
++
++    killall wpa_supplicant 2>/dev/null
++
++    msg "Starting wpa_supplicant with $CONF ..."
++    wpa_supplicant -B -Dnl80211,wext -i "$IFACE" -c "$CONF"
++
++    if [ $? -ne 0 ]; then
++        set_status "FAILED: wpa_supplicant start failed. Check $CONF and driver."
++        rm -f "$PIDFILE"
++        exit 0
++    fi
++
++    # 等待关联完成，后台等待，不阻塞系统启动
++    i=0
++    while [ $i -lt 20 ]; do
++        STATE="$(wpa_cli -p "$CTRL" -i "$IFACE" status 2>/dev/null | awk -F= '/^wpa_state=/{print $2}')"
++
++        if [ "$STATE" = "COMPLETED" ]; then
++            msg "WiFi connected to AP. Getting IP..."
++
++            # 优先兼容当前系统里的 dhcpcd；没有 dhcpcd 再用 udhcpc
++            if command -v dhcpcd >/dev/null 2>&1; then
++                msg "Running dhcpcd for $IFACE ..."
++
++                # 停掉旧的 wlan0 dhcpcd，避免旧租约/旧进程干扰
++                dhcpcd -k "$IFACE" 2>/dev/null
++                sleep 1
++
++                # 这里虽然 dhcpcd 会等待，但它运行在后台 worker 里，不会阻塞系统启动
++                dhcpcd -4 -t 30 "$IFACE" >> "$LOG" 2>&1
++
++            elif command -v udhcpc >/dev/null 2>&1; then
++                msg "Running udhcpc for $IFACE ..."
++                udhcpc -n -q -t 5 -T 3 -i "$IFACE" >> "$LOG" 2>&1
++            else
++                set_status "FAILED: No DHCP client found. Need dhcpcd or udhcpc."
++                rm -f "$PIDFILE"
++                exit 0
++            fi
++
++            # DHCP 后再等一会儿，避免 dhcpcd 还在 ARP probing / 写地址
++            j=0
++            IPADDR=""
++            while [ $j -lt 30 ]; do
++                IPADDR="$(get_ip)"
++
++                case "$IPADDR" in
++                    ""|169.254.*)
++                        sleep 1
++                        j=$((j + 1))
++                        ;;
++                    *)
++                        break
++                        ;;
++                esac
++            done
++
++            case "$IPADDR" in
++                ""|169.254.*)
++                    set_status "DHCP_FAILED: WiFi associated, but no valid IP. Current IP: ${IPADDR:-none}"
++                    ;;
++                *)
++                    set_status "OK: WiFi connected. IP: $IPADDR"
++                    ;;
++            esac
++
++            rm -f "$PIDFILE"
++            exit 0
++        fi
++
++        sleep 1
++        i=$((i + 1))
++    done
++
++    set_status "FAILED: WiFi connect timeout. Check SSID/password/router. Run: wifi_setup \"SSID\" \"PASSWORD\""
++    rm -f "$PIDFILE"
++    exit 0
++}
++
++stop_wifi()
++{
++    msg "Stopping WiFi..."
++
++    if [ -f "$PIDFILE" ]; then
++        PID="$(cat "$PIDFILE" 2>/dev/null)"
++        [ -n "$PID" ] && kill "$PID" 2>/dev/null
++        rm -f "$PIDFILE"
++    fi
++
++    dhcpcd -k "$IFACE" 2>/dev/null
++    killall udhcpc 2>/dev/null
++    killall wpa_supplicant 2>/dev/null
++    ifconfig "$IFACE" down 2>/dev/null
++
++    set_status "STOPPED: WiFi stopped."
++}
++
++show_status()
++{
++    echo "===== WiFi auto status ====="
++    cat "$STATUS" 2>/dev/null || echo "No status yet."
++
++    echo
++    echo "===== wlan IP ====="
++    ip addr show "$IFACE" 2>/dev/null || ifconfig "$IFACE" 2>/dev/null
++
++    echo
++    echo "===== wpa_supplicant state ====="
++    wpa_cli -p "$CTRL" -i "$IFACE" status 2>/dev/null || true
++
++    echo
++    echo "===== log tail ====="
++    tail -n 30 "$LOG" 2>/dev/null || true
++}
++
++case "$1" in
++    start)
++        start_worker
++        ;;
++    worker)
++        worker
++        ;;
++    stop)
++        stop_wifi
++        ;;
++    restart)
++        stop_wifi
++        sleep 1
++        start_worker
++        ;;
++    status)
++        show_status
++        ;;
++    *)
++        echo "Usage: $0 {start|stop|restart|status}"
++        exit 1
++        ;;
++esac
++
++exit 0
+diff --git a/board/rockchip/common/wifi/etc/profile.d/wifi_notice.sh b/board/rockchip/common/wifi/etc/profile.d/wifi_notice.sh
+new file mode 100755
+index 00000000..021b752a
+--- /dev/null
++++ b/board/rockchip/common/wifi/etc/profile.d/wifi_notice.sh
+@@ -0,0 +1,17 @@
++#!/bin/sh
++
++if [ -f /tmp/wifi_status ]; then
++    STATUS="$(cat /tmp/wifi_status 2>/dev/null)"
++
++    case "$STATUS" in
++        OK:*)
++            echo "[WiFi] $STATUS"
++            ;;
++        FAILED:*|NO_CONFIG:*|DHCP_FAILED:*)
++            echo
++            echo "[WiFi WARNING] $STATUS"
++            echo "[WiFi] Run 'wifi_status' for details."
++            echo
++            ;;
++    esac
++fi
+diff --git a/board/rockchip/common/wifi/etc/wpa_supplicant.conf b/board/rockchip/common/wifi/etc/wpa_supplicant.conf
+new file mode 100644
+index 00000000..7fa0660e
+--- /dev/null
++++ b/board/rockchip/common/wifi/etc/wpa_supplicant.conf
+@@ -0,0 +1,9 @@
++ctrl_interface=/var/run/wpa_supplicant
++update_config=1
++country=CN
++
++network={
++    ssid="PDCN"
++    psk=dce5cdbd5eeabf26f902c1920340a0fdb8e3d0c41764a8952185999d5137dbf5
++    key_mgmt=WPA-PSK
++}
+diff --git a/board/rockchip/common/wifi/usr/bin/wifi_setup b/board/rockchip/common/wifi/usr/bin/wifi_setup
+new file mode 100755
+index 00000000..837493d3
+--- /dev/null
++++ b/board/rockchip/common/wifi/usr/bin/wifi_setup
+@@ -0,0 +1,53 @@
++#!/bin/sh
++
++IFACE="${WIFI_IFACE:-wlan0}"
++CONF="/etc/wpa_supplicant.conf"
++
++if [ $# -lt 2 ]; then
++    echo "Usage: wifi_setup \"SSID\" \"PASSWORD\""
++    echo "Example: wifi_setup \"PDCN\" \"1234567890\""
++    exit 1
++fi
++
++SSID="$1"
++PASS="$2"
++
++echo "Creating WiFi config for SSID: $SSID"
++
++if command -v wpa_passphrase >/dev/null 2>&1; then
++    {
++        echo "ctrl_interface=/var/run/wpa_supplicant"
++        echo "update_config=1"
++        echo "country=CN"
++        echo
++        wpa_passphrase "$SSID" "$PASS" | sed '/#psk=/d'
++    } > "$CONF"
++else
++    cat > "$CONF" <<EOC
++ctrl_interface=/var/run/wpa_supplicant
++update_config=1
++country=CN
++
++network={
++    ssid="$SSID"
++    psk="$PASS"
++    key_mgmt=WPA-PSK
++}
++EOC
++fi
++
++chmod 600 "$CONF"
++
++echo "WiFi config saved to $CONF"
++echo "Restarting WiFi..."
++
++if [ -x /etc/init.d/S45wifi_auto ]; then
++    /etc/init.d/S45wifi_auto restart
++else
++    ifconfig "$IFACE" up
++    killall wpa_supplicant 2>/dev/null
++    killall udhcpc 2>/dev/null
++    wpa_supplicant -B -Dnl80211,wext -i "$IFACE" -c "$CONF"
++    sleep 5
++    udhcpc -i "$IFACE"
++fi
+diff --git a/board/rockchip/common/wifi/usr/bin/wifi_status b/board/rockchip/common/wifi/usr/bin/wifi_status
+new file mode 100755
+index 00000000..427d6e28
+--- /dev/null
++++ b/board/rockchip/common/wifi/usr/bin/wifi_status
+@@ -0,0 +1,25 @@
++#!/bin/sh
++
++IFACE="${WIFI_IFACE:-wlan0}"
++STATUS="/tmp/wifi_status"
++LOG="/tmp/wifi_auto.log"
++CTRL="/var/run/wpa_supplicant"
++
++echo "===== WiFi status ====="
++cat "$STATUS" 2>/dev/null || echo "No WiFi status yet."
++
++echo
++echo "===== IP address ====="
++ip addr show "$IFACE" 2>/dev/null || ifconfig "$IFACE" 2>/dev/null
++
++echo
++echo "===== route ====="
++ip route 2>/dev/null || route -n 2>/dev/null
++
++echo
++echo "===== wpa_supplicant ====="
++wpa_cli -p "$CTRL" -i "$IFACE" status 2>/dev/null || echo "wpa_cli unavailable or wpa_supplicant not ready."
++
++echo
++echo "===== recent log ====="
++tail -n 40 "$LOG" 2>/dev/null || echo "No log yet."
+diff --git a/board/rockchip/rk356x/fs-overlay/etc/vision-terminal/version b/board/rockchip/rk356x/fs-overlay/etc/vision-terminal/version
+new file mode 100644
+index 00000000..ff51a751
+--- /dev/null
++++ b/board/rockchip/rk356x/fs-overlay/etc/vision-terminal/version
+@@ -0,0 +1,3 @@
++slot=system_a
++version=1.0.1
++build=swupdate_to_a_test
+diff --git a/configs/rockchip/rk356x.config b/configs/rockchip/rk356x.config
+index 71c2dd7d..36182ca4 100644
+--- a/configs/rockchip/rk356x.config
++++ b/configs/rockchip/rk356x.config
+@@ -5,3 +5,4 @@ BR2_TARGET_GENERIC_GETTY_PORT="ttyFIQ0"
+ BR2_TARGET_GENERIC_GETTY_BAUDRATE_1500000=y
+ BR2_TARGET_GENERIC_HOSTNAME="RK356X"
+ BR2_TARGET_GENERIC_ISSUE="Welcome to RK356X Buildroot"
++BR2_TARGET_LOCALTIME="Asia/Shanghai"
+diff --git a/configs/rockchip_rk3566_defconfig b/configs/rockchip_rk3566_defconfig
+index 22ea8cc1..230ad222 100755
+--- a/configs/rockchip_rk3566_defconfig
++++ b/configs/rockchip_rk3566_defconfig
+@@ -22,3 +22,10 @@
+ BR2_PACKAGE_RKWIFIBT_AP6212A1=y
+ BR2_PACKAGE_RKWIFIBT_BTUART="ttyS1"
+ BR2_PACKAGE_RKNPU2=y
++# SWUpdate OTA support
++BR2_PACKAGE_LIBCONFIG=y
++BR2_PACKAGE_SWUPDATE=y
++BR2_PACKAGE_SWUPDATE_CONFIG="package/swupdate/swupdate.config"
++BR2_PACKAGE_SWUPDATE_INSTALL_WEBSITE=y
++
++BR2_TARGET_GENERIC_ROOT_PASSWD="123"
