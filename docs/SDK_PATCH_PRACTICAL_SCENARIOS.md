@@ -1,4 +1,4 @@
-# SDK Patch 实际开发场景示例
+# SDK Patch 实际开发场景示例（完善版）
 
 本文档用于记录在 RK3566 / Rockchip SDK 开发过程中常见的 patch 使用场景，包括：
 
@@ -27,6 +27,162 @@ SDK 修改通过 patch 记录。
 ```
 
 ---
+
+---
+
+# 补充原则：main 中的 patch 不覆盖，feature 中的 patch 可覆盖
+
+在本项目中，patch 的使用要区分两个阶段：
+
+```text
+feature 分支阶段：patch 还在开发中，可以反复覆盖、修改、打磨。
+main 分支阶段：patch 已经成为历史归档，不再覆盖，后续修改新增 patch。
+```
+
+## 一、为什么 main 里的 patch 不建议覆盖
+
+如果一个 patch 已经合并到 `main`，说明它代表某个阶段的 SDK 修改记录。例如：
+
+```text
+0001-buildroot-swupdate-wifi-overlay.patch
+```
+
+这个 patch 如果已经进入 `main`，以后就不要直接修改它。  
+因为它已经成为历史记录。
+
+如果一个月后 WiFi 又有新问题，不应该把 `0001` 改掉，而应该新增：
+
+```text
+0006-buildroot-wifi-nonblock-boot.patch
+```
+
+如果 `0006` 后来又有问题，也不要改 `0006`，可以新增：
+
+```text
+0007-buildroot-wifi-nonblock-boot-v2.patch
+```
+
+这样历史会很清楚：
+
+```text
+0001：WiFi 基础配置
+0006：第一次非阻塞修复
+0007：第二版非阻塞修复
+```
+
+## 二、什么时候可以覆盖 patch
+
+只有一种情况推荐覆盖 patch：
+
+```text
+这个 patch 还在当前 feature 分支中，尚未合并到 main。
+```
+
+例如你正在开发：
+
+```text
+feature/wifi-nonblock-boot
+```
+
+你生成了：
+
+```text
+0006-buildroot-wifi-nonblock-boot.patch
+```
+
+但还没合并到 `main`，这时发现脚本还要调整，可以重新生成并覆盖 `0006`：
+
+```bash
+cd ~/tspi/linux/buildroot
+
+git diff -- \
+  board/rockchip/common/wifi/etc/init.d/S37wifi_auto \
+  > ~/tspi/rk3566_vision_terminal/patches/sdk/0006-buildroot-wifi-nonblock-boot.patch
+```
+
+然后在 feature 分支里提交即可。
+
+## 三、最终推荐规则
+
+| 场景 | 推荐做法 |
+|---|---|
+| patch 还在 feature 分支，没合并 main | 可以覆盖 |
+| patch 已经合并 main | 不要覆盖，新增 patch |
+| 想修复旧 patch 的问题 | 新增一个 fix patch |
+| 想撤销某次 SDK 修改 | `git apply -R` 撤销对应 patch |
+| 想回到某个阶段 | 用 `git tag` 或 commit |
+| 临时实验失败 | 不生成正式 patch，写进 `DEVLOG.md` |
+
+一句话：
+
+```text
+feature 阶段可以打磨 patch，main 阶段只追加 patch。
+```
+
+---
+
+# 补充原则：patch 不是时间线，commit / tag 才是时间点
+
+patch 记录的是：
+
+```text
+SDK 具体改了什么
+```
+
+Git commit 记录的是：
+
+```text
+项目仓库在哪个时间点保存了什么
+```
+
+Git tag 记录的是：
+
+```text
+某个阶段性版本
+```
+
+因此如果你想知道“哪次修改到哪了”，应该看：
+
+```bash
+git log --oneline --decorate --graph --all -10
+git tag
+```
+
+如果你想知道“某个 patch 改了什么”，应该看：
+
+```bash
+grep -n "diff --git" patches/sdk/xxxx.patch
+head -80 patches/sdk/xxxx.patch
+```
+
+如果你想在 SDK 里撤销某个 patch，使用：
+
+```bash
+git apply -R xxx.patch
+```
+
+## 推荐版本 tag
+
+当完成阶段性成果后，可以打 tag：
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+
+git tag -a v0.1.0 -m "project init and sdk patch archive"
+git push origin v0.1.0
+```
+
+示例版本规划：
+
+```text
+v0.1.0  项目初始化、GitHub、SDK patch 归档
+v0.2.0  ota_slotctl 当前槽位检测
+v0.3.0  misc 分区解析
+v0.4.0  A/B 槽位切换
+v0.5.0  SWUpdate 写入 inactive slot
+v1.0.0  完整可展示版本
+```
+
 
 # 场景 1：修改 Buildroot 配置后，记录成 patch
 
@@ -899,6 +1055,461 @@ patches/sdk/0004-kernel-display-touch-dts.patch
 ```
 
 ---
+
+---
+
+# 场景 13：一个月后发现 WiFi 新 patch 有问题，回退到旧版本
+
+## 场景说明
+
+假设两个月前你有一个稳定 WiFi patch：
+
+```text
+0001-buildroot-swupdate-wifi-overlay.patch
+```
+
+一个月前你又新增了一个 WiFi 修复 patch：
+
+```text
+0006-buildroot-wifi-nonblock-boot.patch
+```
+
+现在发现 `0006` 有问题，比如：
+
+```text
+开机 WiFi 状态检测异常
+DHCP 获取失败后日志异常
+某些网络环境下无法自动恢复
+```
+
+因为 `0006` 是单独新增的 patch，所以可以只撤销它，不影响 `0001`。
+
+## 操作步骤
+
+进入 Buildroot 子仓库：
+
+```bash
+cd ~/tspi/linux/buildroot
+```
+
+先检查是否可以反向撤销：
+
+```bash
+git apply -R --check ~/tspi/rk3566_vision_terminal/patches/sdk/0006-buildroot-wifi-nonblock-boot.patch
+```
+
+如果没有输出，正式撤销：
+
+```bash
+git apply -R ~/tspi/rk3566_vision_terminal/patches/sdk/0006-buildroot-wifi-nonblock-boot.patch
+```
+
+查看 SDK 状态：
+
+```bash
+git status --short
+git diff --stat
+```
+
+此时 SDK 会回到应用 `0006` 之前的 WiFi 状态。  
+如果 `0006` 是基于 `0001` 做的增量修改，那么撤销后仍保留 `0001` 的基础 WiFi 配置。
+
+## 回退后记录
+
+在项目仓库中新建修复分支：
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+
+git switch main
+git pull
+git switch -c fix/rollback-wifi-nonblock-boot
+```
+
+更新 `docs/SDK_CHANGELOG.md`，记录：
+
+```markdown
+## 2026-07-07 - 回退 WiFi 非阻塞启动 patch
+
+### 回退原因
+
+`0006-buildroot-wifi-nonblock-boot.patch` 在部分网络环境下导致 WiFi 状态检测异常，因此暂时回退。
+
+### 回退的 patch
+
+```text
+patches/sdk/0006-buildroot-wifi-nonblock-boot.patch
+```
+
+### 回退方式
+
+```bash
+cd ~/tspi/linux/buildroot
+git apply -R ~/tspi/rk3566_vision_terminal/patches/sdk/0006-buildroot-wifi-nonblock-boot.patch
+```
+
+### 当前结果
+
+SDK 已回退到应用 `0006` 之前的 WiFi 状态。
+```
+
+提交记录：
+
+```bash
+git add docs/SDK_CHANGELOG.md
+git commit -m "docs: record wifi nonblock patch rollback"
+git push -u origin fix/rollback-wifi-nonblock-boot
+```
+
+合并回 main：
+
+```bash
+git switch main
+git pull
+git merge fix/rollback-wifi-nonblock-boot
+git push
+```
+
+---
+
+# 场景 14：回退后新增修复版 patch
+
+## 场景说明
+
+你撤销了有问题的：
+
+```text
+0006-buildroot-wifi-nonblock-boot.patch
+```
+
+后来重新修复，生成第二版：
+
+```text
+0007-buildroot-wifi-nonblock-boot-v2.patch
+```
+
+不要覆盖 `0006`，因为它已经进入 main，是历史记录。  
+新的修复应该用新编号 patch。
+
+## 操作步骤
+
+进入 Buildroot：
+
+```bash
+cd ~/tspi/linux/buildroot
+```
+
+修改 WiFi 脚本并验证成功后，生成新 patch：
+
+```bash
+git diff -- \
+  board/rockchip/common/wifi/etc/init.d/S37wifi_auto \
+  > ~/tspi/rk3566_vision_terminal/patches/sdk/0007-buildroot-wifi-nonblock-boot-v2.patch
+```
+
+回项目仓库提交：
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+
+git add patches/sdk/0007-buildroot-wifi-nonblock-boot-v2.patch docs/SDK_CHANGELOG.md
+git commit -m "patch(sdk): add wifi nonblock boot v2"
+git push
+```
+
+此时历史很清楚：
+
+```text
+0001：WiFi 基础配置
+0006：第一次非阻塞修复，有问题
+0007：第二版非阻塞修复
+```
+
+---
+
+# 场景 15：feature 分支中的 patch 如何处理
+
+## 场景说明
+
+你在 feature 分支中开发新功能，例如：
+
+```text
+feature/ota-slotctl-misc
+```
+
+你生成了：
+
+```text
+0012-buildroot-ota-slotctl-misc.patch
+```
+
+后来你在同一个 feature 分支中继续修改同一功能。
+
+## 推荐做法
+
+如果该 feature 分支还没合并到 main，可以覆盖这个 patch：
+
+```bash
+cd ~/tspi/linux/buildroot
+
+git diff -- \
+  configs/rockchip_rk3566_defconfig \
+  configs/rockchip/rk356x.config \
+  > ~/tspi/rk3566_vision_terminal/patches/sdk/0012-buildroot-ota-slotctl-misc.patch
+```
+
+然后提交：
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+
+git add patches/sdk/0012-buildroot-ota-slotctl-misc.patch
+git commit -m "patch(sdk): update ota slotctl misc patch"
+git push
+```
+
+## 为什么 feature 分支中可以覆盖
+
+因为它还没有进入 main，还属于开发草稿阶段。  
+你可以把它打磨到稳定后，再合并 main。
+
+## 合并 main 后怎么办
+
+一旦合并 main，后续不要再覆盖它。  
+如果后面发现问题，新增：
+
+```text
+0014-buildroot-ota-slotctl-misc-fix.patch
+```
+
+或者回退：
+
+```bash
+git apply -R 0012-buildroot-ota-slotctl-misc.patch
+```
+
+---
+
+# 场景 16：用 tag 记录项目阶段
+
+## 场景说明
+
+patch 记录的是 SDK 改动内容，但它本身不是时间线。  
+如果要记录“项目做到哪个阶段”，应该使用 Git tag。
+
+例如当前已经完成：
+
+```text
+项目初始化
+GitHub 上传
+SDK patch 归档
+SDK 状态检查脚本
+```
+
+可以打一个版本：
+
+```text
+v0.1.0
+```
+
+## 操作步骤
+
+进入项目仓库：
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+```
+
+打 tag：
+
+```bash
+git tag -a v0.1.0 -m "project init and sdk patch archive"
+git push origin v0.1.0
+```
+
+查看 tag：
+
+```bash
+git tag
+```
+
+查看某个 tag：
+
+```bash
+git show v0.1.0
+```
+
+临时切到某个 tag 查看项目状态：
+
+```bash
+git checkout v0.1.0
+```
+
+回到 main：
+
+```bash
+git switch main
+```
+
+## 注意事项
+
+tag 适合用来记录阶段成果，例如：
+
+```text
+v0.1.0  项目初始化、SDK patch 归档
+v0.2.0  ota_slotctl 当前槽位检测
+v0.3.0  misc 分区解析
+v0.4.0  A/B 槽位切换
+v0.5.0  SWUpdate 写入 inactive slot
+v1.0.0  完整可展示版本
+```
+
+---
+
+# 场景 17：feature 功能修改了 SDK 设备树和 config，如何同步
+
+## 场景说明
+
+你开发一个功能时，可能同时修改：
+
+```text
+项目源码：services/ota_service/ota_slotctl/ota_slotctl.c
+SDK Buildroot 配置：~/tspi/linux/buildroot/configs/...
+SDK 设备树：~/tspi/linux/kernel/arch/arm64/boot/dts/...
+SDK 分区表：~/tspi/linux/device/rockchip/...
+```
+
+项目仓库切换分支不会自动切换 SDK 状态，因此要通过 patch 同步 SDK 修改。
+
+## 推荐流程
+
+### 1. 在项目仓库开 feature 分支
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+
+git switch main
+git pull
+git switch -c feature/ota-slotctl-misc
+```
+
+### 2. 修改项目源码和 SDK
+
+正常修改：
+
+```text
+services/ota_service/ota_slotctl/ota_slotctl.c
+~/tspi/linux/buildroot/...
+~/tspi/linux/kernel/...
+~/tspi/linux/device/rockchip/...
+```
+
+### 3. 每天收工检查 SDK 状态
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+
+./scripts/check_sdk_status.sh
+```
+
+把关键输出记录到：
+
+```text
+docs/DEVLOG.md
+```
+
+### 4. 功能稳定后生成对应 patch
+
+例如 Buildroot：
+
+```bash
+cd ~/tspi/linux/buildroot
+
+git diff -- \
+  configs/rockchip_rk3566_defconfig \
+  configs/rockchip/rk356x.config \
+  > ~/tspi/rk3566_vision_terminal/patches/sdk/0015-buildroot-ota-slotctl-misc.patch
+```
+
+例如 kernel：
+
+```bash
+cd ~/tspi/linux/kernel
+
+git diff -- \
+  arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-linux.dts \
+  > ~/tspi/rk3566_vision_terminal/patches/sdk/0016-kernel-ota-slotctl-misc-dts.patch
+```
+
+例如 device/rockchip：
+
+```bash
+cd ~/tspi/linux/device/rockchip
+
+git diff -- \
+  rk356x/BoardConfig-rk3566-tspi-v10.mk \
+  rk356x/parameter-buildroot-fit.txt \
+  > ~/tspi/rk3566_vision_terminal/patches/sdk/0017-device-ota-slotctl-misc-config.patch
+```
+
+### 5. 回项目仓库提交
+
+```bash
+cd ~/tspi/rk3566_vision_terminal
+
+git add services docs patches
+git commit -m "feat(slotctl): add misc parser and related sdk patches"
+git push -u origin feature/ota-slotctl-misc
+```
+
+这样 feature 分支就同时记录了：
+
+```text
+项目源码修改
+SDK 修改 patch
+开发文档
+```
+
+---
+
+# 补充总结
+
+日常开发中推荐：
+
+```text
+临时实验：只写 DEVLOG，不生成正式 patch
+功能稳定：生成 patch
+patch 生成后：检查是否包含脏文件
+patch 归档后：提交到项目仓库
+新环境复现：进入对应 SDK 子仓库 git apply
+应用错了：git apply -R 回退
+```
+
+最终规则：
+
+```text
+main 里的 patch = 历史存档，不改。
+feature 里的 patch = 草稿，可以改。
+新问题 = 新 patch。
+坏 patch = git apply -R 撤销。
+修复版 = 新编号 patch。
+项目阶段 = tag 记录。
+```
+
+核心口诀：
+
+```text
+项目源码进 Git。
+完整 SDK 不进 Git。
+SDK 修改变 patch。
+临时试验写日志。
+稳定功能再归档。
+应用之前先 --check。
+回退 patch 用 -R。
+main 里的 patch 不覆盖。
+feature 里的 patch 可覆盖。
+阶段成果打 tag。
+```
 
 # 总结
 
