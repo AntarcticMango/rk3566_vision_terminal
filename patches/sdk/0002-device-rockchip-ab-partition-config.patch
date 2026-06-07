@@ -1,0 +1,26 @@
+diff --git a/rk356x/BoardConfig-rk3566-tspi-v10.mk b/rk356x/BoardConfig-rk3566-tspi-v10.mk
+index d2472bf..ff2f149 100755
+--- a/rk356x/BoardConfig-rk3566-tspi-v10.mk
++++ b/rk356x/BoardConfig-rk3566-tspi-v10.mk
+@@ -20,6 +20,7 @@ export RK_KERNEL_IMG=kernel/arch/arm64/boot/Image
+ export RK_KERNEL_FIT_ITS=boot.its
+ # parameter for GPT table
+ export RK_PARAMETER=parameter-buildroot-fit.txt
++export RK_PACKAGE_FILE=rk356x-package-file-ab-rootfs
+ # Buildroot config
+ export RK_CFG_BUILDROOT=rockchip_rk3566
+ # Recovery config
+diff --git a/rk356x/parameter-buildroot-fit.txt b/rk356x/parameter-buildroot-fit.txt
+index 4defd4d..d99bfee 100644
+--- a/rk356x/parameter-buildroot-fit.txt
++++ b/rk356x/parameter-buildroot-fit.txt
+@@ -8,5 +8,6 @@ MACHINE: 0xffffffff
+ CHECK_MASK: 0x80
+ PWR_HLD: 0,0,A,0,1
+ TYPE: GPT
+-CMDLINE: mtdparts=rk29xxnand:0x00002000@0x00004000(uboot),0x00002000@0x00006000(misc),0x00020000@0x00008000(boot),0x00020000@0x00028000(recovery),0x00010000@0x00048000(backup),0x00c00000@0x00058000(rootfs),0x00040000@0x00c58000(oem),-@0x00c98000(userdata:grow)
+-uuid:rootfs=614e0000-0000-4b53-8000-1d28000054a9
++CMDLINE: mtdparts=rk29xxnand:0x00002000@0x00004000(uboot),0x00002000@0x00006000(misc),0x00020000@0x00008000(boot),0x00020000@0x00028000(recovery),0x00010000@0x00048000(backup),0x00600000@0x00058000(system_a),0x00600000@0x00658000(system_b),0x00040000@0x00c58000(oem),-@0x00c98000(userdata:grow)
++uuid:system_a=614e0000-0000-4b53-8000-1d28000054a9
++uuid:system_b=614e0001-0000-4b53-8000-1d28000054a9
+\ No newline at end of file

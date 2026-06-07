@@ -1,0 +1,9 @@
+diff --git a/configs/rk3566.config b/configs/rk3566.config
+index e695d41151..92ee48efe4 100644
+--- a/configs/rk3566.config
++++ b/configs/rk3566.config
+@@ -1,2 +1,4 @@
+ CONFIG_BASE_DEFCONFIG="rk3568_defconfig"
+ CONFIG_LOADER_INI="RK3566MINIALL.ini"
++CONFIG_ANDROID_AB=y
++CONFIG_CMD_ANDROID_AB_SELECT=y

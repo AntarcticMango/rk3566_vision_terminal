@@ -1,0 +1,772 @@
+diff --git a/arch/arm64/boot/dts/rockchip/tspi-rk3566-core-v10.dtsi b/arch/arm64/boot/dts/rockchip/tspi-rk3566-core-v10.dtsi
+index 6c9afefd9002..a86090956447 100755
+--- a/arch/arm64/boot/dts/rockchip/tspi-rk3566-core-v10.dtsi
++++ b/arch/arm64/boot/dts/rockchip/tspi-rk3566-core-v10.dtsi
+@@ -28,7 +28,11 @@
+ 
+ / {
+ 	chosen: chosen {
+-		bootargs = "earlycon=uart8250,mmio32,0xfe660000 console=ttyFIQ0 root=PARTUUID=614e0000-0000 rw rootwait";
++		/* Original fixed rootfs bootargs, keep for rollback:
++		 * bootargs = "earlycon=uart8250,mmio32,0xfe660000 console=ttyFIQ0 root=PARTUUID=614e0000-0000 rw rootwait";
++		 */
++
++		bootargs = "earlycon=uart8250,mmio32,0xfe660000 console=ttyFIQ0 rw rootwait";
+ 	};
+ 
+ 	fiq-debugger {
+diff --git a/arch/arm64/boot/dts/rockchip/tspi-rk3566-dsi-v10-07255F.dtsi b/arch/arm64/boot/dts/rockchip/tspi-rk3566-dsi-v10-07255F.dtsi
+new file mode 100644
+index 000000000000..cb8263b081b8
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/tspi-rk3566-dsi-v10-07255F.dtsi
+@@ -0,0 +1,415 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++/*********************************************************************
++ *           立创开发板不靠卖板赚钱，以培养中国工程师为己任          
++ *         泰山派软硬件资料与相关扩展板软硬件资料官网全部开源		 
++ *                      开发板官网：www.lckfb.com                    
++ *                     立创论坛：oshwhub.com/forum                   
++ *            关注B站：【立创开发板】，掌握我们的最新动态！          
++ *********************************************************************
++ * 文件名：tspi-rk3566-dsi-v10.dtsi
++ * 描述：mipi 屏幕
++ * 更新:
++ * 时间          作者           联系           说明
++ * 2023-07-21   吴才成    1378913492@qq.com   v1.0.0
++ *********************************************************************/
++/ {
++	backlight: backlight {
++		compatible = "pwm-backlight";
++		pwms = <&pwm5 0 25000 0>;
++		brightness-levels = <
++			  0  20  20  21  21  22  22  23
++			 23  24  24  25  25  26  26  27
++			 27  28  28  29  29  30  30  31
++			 31  32  32  33  33  34  34  35
++			 35  36  36  37  37  38  38  39
++			 40  41  42  43  44  45  46  47
++			 48  49  50  51  52  53  54  55
++			 56  57  58  59  60  61  62  63
++			 64  65  66  67  68  69  70  71
++			 72  73  74  75  76  77  78  79
++			 80  81  82  83  84  85  86  87
++			 88  89  90  91  92  93  94  95
++			 96  97  98  99 100 101 102 103
++			104 105 106 107 108 109 110 111
++			112 113 114 115 116 117 118 119
++			120 121 122 123 124 125 126 127
++			128 129 130 131 132 133 134 135
++			136 137 138 139 140 141 142 143
++			144 145 146 147 148 149 150 151
++			152 153 154 155 156 157 158 159
++			160 161 162 163 164 165 166 167
++			168 169 170 171 172 173 174 175
++			176 177 178 179 180 181 182 183
++			184 185 186 187 188 189 190 191
++			192 193 194 195 196 197 198 199
++			200 201 202 203 204 205 206 207
++			208 209 210 211 212 213 214 215
++			216 217 218 219 220 221 222 223
++			224 225 226 227 228 229 230 231
++			232 233 234 235 236 237 238 239
++			240 241 242 243 244 245 246 247
++			248 249 250 251 252 253 254 255
++		>;
++		default-brightness-level = <255>;
++	};
++};
++
++&pwm5 {
++	status = "okay";
++};
++
++
++&i2c1 {
++	status = "okay";
++	ts@5d {
++		pinctrl-0 = <&touch_gpio>;
++		compatible = "goodix,gt9xx";
++		reg = <0x5d>;
++		tp-size = <970>;
++		max-x = <1200>;  //akiva
++		max-y = <1920>;  //akiva
++		touch-gpio = <&gpio1 RK_PA0 IRQ_TYPE_LEVEL_LOW>;
++		reset-gpio = <&gpio1 RK_PA1 GPIO_ACTIVE_LOW >;
++	};
++};
++
++&pinctrl {
++	dsi1 {
++		dsi1_rst_gpio: dsi1-rst-gpio {
++			rockchip,pins = <3 RK_PC1 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++		touch_gpio: touch-gpio {
++			rockchip,pins = <1 RK_PA0 RK_FUNC_GPIO &pcfg_pull_up>;
++		};
++	};
++};
++
++/*
++ * video_phy1 needs to be enabled
++ * when dsi1 is enabled
++ */
++&dsi1 {
++	status = "okay";
++};
++
++&dsi1_in_vp0 {
++	status = "disabled";
++};
++
++&dsi1_in_vp1 {
++	status = "okay";
++};
++
++&video_phy1 {
++	status = "okay";
++};
++
++&route_dsi1 {
++	status = "okay";//wucaicheng mipi okay
++	connect = <&vp1_out_dsi1>;
++};
++
++/************************************************************************************************************************************************
++ CPT_FY07020di26e368-D-V1  akiva
++ jd9365aa 800X1280
++************************************************************************************************************************************************/
++&dsi1 {
++	status = "okay";
++	// rockchip,lane-rate = <421>;  //akiva
++	dsi1_panel: panel@0 {
++		status = "okay";
++		compatible = "simple-panel-dsi";
++		reset-gpios = <&gpio3 RK_PC1 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&dsi1_rst_gpio>;
++		reg = <0>;
++		backlight = <&backlight>;
++		reset-delay-ms = <30>;
++		enable-delay-ms = <100>;
++		prepare-delay-ms = <20>;
++		unprepare-delay-ms = <20>;
++		disable-delay-ms = <20>;
++		init-delay-ms = <10>;
++		dsi,flags = <(MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST |
++			MIPI_DSI_MODE_LPM | MIPI_DSI_MODE_EOT_PACKET)>;
++		dsi,format = <MIPI_DSI_FMT_RGB888>;
++		dsi,lanes  = <4>;
++		panel-init-sequence = [
++			15 00 02 E0 00 //Page0
++            15 00 02 E1 93 //--- PASSWORD  ----//
++            15 00 02 E2 65
++            15 00 02 E3 F8
++            15 00 02 80 03
++            15 00 02 E0 01 //--- Page1  ----//
++            15 00 02 00 00 //Set VCOM
++            15 00 02 01 8E //A0
++            15 00 02 03 00
++            15 00 02 04 8E //A0
++            15 00 02 0C 74 //Set Gamma Power, VGMP,VGMN,VGSP,VGSN
++            15 00 02 17 00 //Set Gamma Power, VGMP,VGMN,VGSP,VGSN
++            15 00 02 18 D8 //D7
++            15 00 02 19 01 //00
++            15 00 02 1A 00
++            15 00 02 1B D8
++            15 00 02 1C 01 //00
++            15 00 02 1F 74	//Set Gate Power //VGH_REG=17V	6A VGH_REG=15V	
++            15 00 02 20 19	//VGL_REG=-8V	23 VGL_REG=-10V
++            15 00 02 21 19	//VGL_REG2=-8V	23 VGL_REG2=-10V
++            15 00 02 22 0E	
++            15 00 02 37 29	//SET RGBCYC //SS=1, BGR=1
++            15 00 02 38 05	//JDT=101 Zig-zag
++            15 00 02 39 08	//RGB_N_EQ1, modify 20140806
++            15 00 02 3A 18	//12	modify 15/05/06	RGB_N_EQ2, modify 20140806
++            15 00 02 3B 18	//modify 15/05/06	
++            15 00 02 3C 72	//78	modify 15/05/06	SET EQ3 for TE_H
++            15 00 02 3D FF	//SET CHGEN_ON, modify 20140827 
++            15 00 02 3E FF	//SET CHGEN_OFF, modify 20140827 
++            15 00 02 3F FF	//SET CHGEN_OFF2, modify 20140827
++            15 00 02 40 06	//Set TCON //RSO 04h=720, 05h=768, 06h=800
++            15 00 02 41 A0	//LN=640->1280 line
++            15 00 02 43 10	//VFP
++            15 00 02 44 0E	//VBP
++            15 00 02 45 3C	//HBP
++            15 00 02 55 01	//--- power voltage  ----// //DCDCM=0011, HX PWR_IC
++            15 00 02 56 01
++            15 00 02 57 64	//65	modify 15/05/06
++            15 00 02 58 0A	//AVDD
++            15 00 02 59 0A	//VCL &AVEE
++            15 00 02 5A 28	//VGH ,15V
++            15 00 02 5B 10	//VGL,-10V 
++            15 00 02 5D 7C	//--- Gamma  ----// //70
++            15 00 02 5E 60  //56
++            15 00 02 5F 4E	//45
++            15 00 02 60 40	//39
++            15 00 02 61 39  //35
++            15 00 02 62 28  //26
++            15 00 02 63 2A  //2A
++            15 00 02 64 11  //14
++            15 00 02 65 27  //2E
++            15 00 02 66 23  //2D
++            15 00 02 67 21  //2D
++            15 00 02 68 3D  //4C
++            15 00 02 69 2B  //3A
++            15 00 02 6A 33  //45
++            15 00 02 6B 26  //38
++            15 00 02 6C 24  //36
++            15 00 02 6D 18  //2B
++            15 00 02 6E 0A  //1C
++            15 00 02 6F 00  //00
++            15 00 02 70 7C  //70
++            15 00 02 71 60  //56
++            15 00 02 72 4E  //45
++            15 00 02 73 40  //39
++            15 00 02 74 39  //35
++            15 00 02 75 29  //26
++            15 00 02 76 2B  //2A
++            15 00 02 77 12  //14
++            15 00 02 78 27  //2E
++            15 00 02 79 24  //2D
++            15 00 02 7A 21  //2D
++            15 00 02 7B 3E  //4C
++            15 00 02 7C 2B  //3A
++            15 00 02 7D 33  //45
++            15 00 02 7E 26  //38
++            15 00 02 7F 24  //36
++            15 00 02 80 19  //2B
++            15 00 02 81 0A  //1C
++            15 00 02 82 00  //00         
++            15 00 02 E0 02  //Page2, for GIP                                
++            15 00 02 00 0E	//GIP_L Pin mapping  //L1/CK2BO/CKV10
++            15 00 02 01 06  //L2/CK2O/CKV2 
++            15 00 02 02 0C  //L3/CK1BO/CKV8 
++            15 00 02 03 04  //L4/CK1O/CKV0 
++            15 00 02 04 08  //L5/CK3O/CKV4 
++            15 00 02 05 19  //L6/CK3BO/CKV2 
++            15 00 02 06 0A  //L7/CK4O/CKV6  
++            15 00 02 07 1B  //L8/CK4BO/CKV14
++            15 00 02 08 00  //L9/STVO/STV0    
++            15 00 02 09 1D  //L10                  
++            15 00 02 0A 1F  //L11/VGL              
++            15 00 02 0B 1F  //L12/VGL              
++            15 00 02 0C 1D  //L13                  
++            15 00 02 0D 1D  //L14                  
++            15 00 02 0E 1D  //L15                  
++            15 00 02 0F 17  //L16/V1_O/FLM1        
++            15 00 02 10 37  //L17/V2_O/FLM1_INV    
++            15 00 02 11 1D  //L18                  
++            15 00 02 12 1F  //L19/BW/VGL     
++            15 00 02 13 1E  //L20/FW/VGH     
++            15 00 02 14 10  //L21/RST_O/ETV0            
++            15 00 02 15 1D  //L22                  
++            15 00 02 16 0F  //GIP_R Pin mapping //R1/CK2BE/CKV11
++            15 00 02 17 07  //R2/CK2E/CKV3 
++            15 00 02 18 0D  //R3/CK1BE/CKV9 
++            15 00 02 19 05  //R4/CK1E/CKV1 
++            15 00 02 1A 09  //R5/CK3E/CKV5 
++            15 00 02 1B 1A  //R6/CK3BE/CKV13
++            15 00 02 1C 0B  //R7/CK4E/CKV7  
++            15 00 02 1D 1C  //R8/CK4BE/CKV15
++            15 00 02 1E 01  //R9/STVE/STV1  
++            15 00 02 1F 1D  //R10                  
++            15 00 02 20 1F  //R11/VGL              
++            15 00 02 21 1F  //R12/VGL              
++            15 00 02 22 1D  //R13                  
++            15 00 02 23 1D  //R14                  
++            15 00 02 24 1D  //R15                  
++            15 00 02 25 18  //R16/V1_E/FLM2 
++            15 00 02 26 38  //R17/V2_E/FLM2_INV
++            15 00 02 27 1D  //R18                  
++            15 00 02 28 1F  //R19/BW/VGL     
++            15 00 02 29 1E  //R20/FW/VGH     
++            15 00 02 2A 11  //R21/RST_E/ETV1            
++            15 00 02 2B 1D  //R22                  
++            15 00 02 2C 09  //GIP_L_GS Pin mapping //L1/CK2BO/CKV5
++            15 00 02 2D 1A  //L2/CK2O/CKV13  
++            15 00 02 2E 0B  //L3/CK1BO/CKV7 
++            15 00 02 2F 1C  //L4/CK1O/CKV15
++            15 00 02 30 0F  //L5/CK3O/CKV11
++            15 00 02 31 07  //L6/CK3BO/CKV3
++            15 00 02 32 0D  //L7/CK4O/CKV9
++            15 00 02 33 05  //L8/CK4BO/CKV1
++            15 00 02 34 11  //L9/STVO/ETV1    
++            15 00 02 35 1D  //L10                  
++            15 00 02 36 1F  //L11/VGL              
++            15 00 02 37 1F  //L12/VGL              
++            15 00 02 38 1D  //L13                  
++            15 00 02 39 1D  //L14                  
++            15 00 02 3A 1D  //L15                  
++            15 00 02 3B 18  //L16/V1_O/FLM2        
++            15 00 02 3C 38  //L17/V2_O/?    
++            15 00 02 3D 1D  //L18                  
++            15 00 02 3E 1E  //L19/BW/VGH     
++            15 00 02 3F 1F  //L20/FW/VGL     
++            15 00 02 40 01  //L21/RST_O/STV1            
++            15 00 02 41 1D  //L22                  
++            15 00 02 42 08  //GIP_R_GS Pin mapping //R1/CK2BE/CKV4
++            15 00 02 43 19  //R2/CK2E/CKV12  
++            15 00 02 44 0A  //R3/CK1BE/CKV6 
++            15 00 02 45 1B  //R4/CK1E/CKV14 
++            15 00 02 46 0E  //R5/CK3E/CKV10 
++            15 00 02 47 06  //R6/CK3BE/CKV2
++            15 00 02 48 0C  //R7/CK4E/CKV8  
++            15 00 02 49 04  //R8/CK4BE/CKV0
++            15 00 02 4A 10  //R9/STVE/ETV0
++            15 00 02 4B 1D  //R10                  
++            15 00 02 4C 1F  //R11/VGL              
++            15 00 02 4D 1F  //R12/VGL              
++            15 00 02 4E 1D  //R13                  
++            15 00 02 4F 1D  //R14                  
++            15 00 02 50 1D  //R15                  
++            15 00 02 51 17  //R16/V1_E/FLM1 
++            15 00 02 52 37  //R17/V2_E/?
++            15 00 02 53 1D  //R18                  
++            15 00 02 54 1E  //R19/BW/VGH     
++            15 00 02 55 1F  //R20/FW/VGL    
++            15 00 02 56 00  //R21/RST_E/STV0            
++            15 00 02 57 1D  //R22                  
++            15 00 02 58 10  //GIP Timing
++            15 00 02 59 00 
++            15 00 02 5A 00 
++            15 00 02 5B 10 
++            15 00 02 5C 00  //01
++            15 00 02 5D D0  //50 
++            15 00 02 5E 01
++            15 00 02 5F 02
++            15 00 02 60 60
++            15 00 02 61 01
++            15 00 02 62 02
++            15 00 02 63 06
++            15 00 02 64 6A
++            15 00 02 65 55 
++            15 00 02 66 0F	  //2C
++            15 00 02 67 F7  //73
++            15 00 02 68 08  //05
++            15 00 02 69 08  
++            15 00 02 6A 6A  //66_by Max_20151029
++            15 00 02 6B 10	//dummy clk
++            15 00 02 6C 00 
++            15 00 02 6D 00	 
++            15 00 02 6E 00	 
++            15 00 02 6F 88 
++            15 00 02 70 00  //00
++            15 00 02 71 17  //00
++            15 00 02 72 06 
++            15 00 02 73 7B 
++            15 00 02 74 00 
++            15 00 02 75 80  //80
++            15 00 02 76 01  
++            15 00 02 77 5D  //0D
++            15 00 02 78 18  //18
++            15 00 02 79 00 
++            15 00 02 7A 00 
++            15 00 02 7B 00 
++            15 00 02 7C 00 
++            15 00 02 7D 03 
++            15 00 02 7E 7B 
++            15 00 02 E0 04 //Page4
++            15 00 02 09 10	// modify 15/05/06
++            15 00 02 0E 38	// modify 15/05/06
++            15 00 02 2B 2B //ESD Check & lane number
++            15 00 02 2D 03
++            15 00 02 2E 44
++            15 00 02 E0 00 //Page0
++            15 00 02 E6 02	//Watch dog
++            15 00 02 E7 06	 
++            05 0a 01 29
++            05 78 01 11
++		];
++
++		panel-exit-sequence = [
++		05 16 01 28
++		05 78 01 10
++		];	
++
++		panel-read-id-sequence = [39 00 04 ff 98 81 01];
++
++		disp_timings1: display-timings {
++			native-mode = <&dsi1_timing0>;
++			dsi1_timing0: timing0 {
++				clock-frequency = <70000000>;   //akiva 66800000
++				hactive = <800>;
++				vactive = <1280>;
++				hfront-porch = <40>;   //akiva 
++				hsync-len = <4>;      //akiva 
++				hback-porch = <40>;    //akiva 
++				vfront-porch = <16>;   //akiva     
++				vsync-len = <2>;       //akiva    
++				vback-porch = <22>;    //akiva    
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++		};
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++				panel_in_dsi1: endpoint {
++					remote-endpoint = <&dsi1_out_panel>;
++				};
++			};
++		};
++	};
++
++	ports {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		port@1 {
++			reg = <1>;
++			dsi1_out_panel: endpoint {
++				remote-endpoint = <&panel_in_dsi1>;
++			};
++		};
++	};
++
++};
++
+diff --git a/arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-07255F.dts b/arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-07255F.dts
+new file mode 100644
+index 000000000000..4f85ff411bcf
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-07255F.dts
+@@ -0,0 +1,207 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++/*********************************************************************
++ *           立创开发板不靠卖板赚钱，以培养中国工程师为己任          
++ *         泰山派软硬件资料与相关扩展板软硬件资料官网全部开源		 
++ *                      开发板官网：www.lckfb.com                    
++ *                     立创论坛：oshwhub.com/forum                   
++ *            关注B站：【立创开发板】，掌握我们的最新动态！          
++ *********************************************************************
++ * 文件名：tspi-rk3566-user-v10.dtsi
++ * 描述：用户自定义层
++ * 更新:
++ * 时间          作者           联系           说明
++ * 2023-07-21   吴才成    1378913492@qq.com   v1.0.0
++ *********************************************************************/
++ 
++/dts-v1/;
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/display/media-bus-format.h>
++#include <dt-bindings/pinctrl/rockchip.h>
++#include "rk3566.dtsi"
++#include "rk3568-android.dtsi"
++
++//tspi核心配置层，这里是几乎后期不需要怎么改动
++#include "tspi-rk3566-core-v10.dtsi"
++
++//【开/关】EDP 显示屏幕配置，用户可以基于此复制自己的屏幕，注意EDP与MIPI屏幕互斥，因为共用了VOP如果需要同显自行修改
++// #include "tspi-rk3566-edp-v10.dtsi"
++
++//【开/关】mipi 显示屏幕配置，用户可以基于此复制自己的屏幕，注意EDP与MIPI屏幕互斥，因为共用了VOP如果需要同显自行修改
++#include "tspi-rk3566-dsi-v10.dtsi"
++
++//【开/关】HDMI 显示屏幕配置，里面内容几乎可以不用动，如果不需要hdmi显示直接注释掉即可
++// #include "tspi-rk3566-hdmi-v10.dtsi"
++
++//【开/关】摄像头 目前视频的是ov5659
++#include "tspi-rk3566-csi-v10.dtsi"
++
++//【开/关】网口 扩展板上使用的是千兆网，不接扩展板情况下可以关闭
++// #include "tspi-rk3566-gmac1-v10.dtsi"
++
++//【开/关】下方是用户定义层，所有用户修改理论上在此下方修改就好了
++/ {
++	model = "lckfb tspi V10 Board";
++	compatible = "lckfb,tspi-v10", "rockchip,rk3566";
++
++	rk_headset: rk-headset {
++		compatible = "rockchip_headset";
++		headset_gpio = <&gpio0 RK_PC5 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&hp_det>;
++	};
++
++	leds: leds {
++		compatible = "gpio-leds";
++		rgb_led_r: rgb-led-r {
++			gpios = <&gpio1 RK_PB2 GPIO_ACTIVE_LOW>;
++			linux,default-trigger = "timer";
++			linux,delay-reg = <0>;   		// 延时注册
++			linux,blink-delay-on = <500>; 	// 打开时间
++			linux,blink-delay-off = <500>;	// 关闭时间
++		};
++		rgb_led_g: rgb-led-g {
++			gpios = <&gpio1 RK_PB1 GPIO_ACTIVE_LOW>;
++			linux,default-trigger = "timer";
++			linux,delay-reg = <100>;   		// 延时注册
++			linux,blink-delay-on = <1000>; 
++			linux,blink-delay-off = <1000>;
++		};
++		rgb_led_b: rgb-led-b {
++			gpios = <&gpio1 RK_PB0 GPIO_ACTIVE_LOW>;
++			linux,default-trigger = "timer";
++			linux,delay-reg = <100>;  		// 延时注册
++			linux,blink-delay-on = <1500>; 
++			linux,blink-delay-off = <1500>;
++		};
++	};
++};
++
++&pinctrl {
++
++	headphone {
++		hp_det: hp-det {
++			rockchip,pins = <0 RK_PC5 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++};
++
++//用户三色灯
++&leds {
++	status = "okay";
++};
++
++//耳机插入检测，不使用扩展板情况需关闭，否则默认会检测到耳机插入
++&rk_headset {
++	status = "disabled";
++};
++
++//用户串口3
++&uart3 {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart3m1_xfer>;
++};
++
++//用户I2C2
++&i2c2 {
++	status = "okay";
++
++	/*添加你的I2C设备参考
++	gt1x: gt1x@14 {
++		compatible = "goodix,gt1x";
++		reg = <0x14>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&touch_gpio>;
++		goodix,rst-gpio = <&gpio0 RK_PB6 GPIO_ACTIVE_HIGH>;
++		goodix,irq-gpio = <&gpio0 RK_PB5 IRQ_TYPE_LEVEL_LOW>;
++	};*/
++};
++
++&i2c3 {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c3m1_xfer>;
++	/*添加你的I2C设备参考
++	gt1x: gt1x@14 {
++		compatible = "goodix,gt1x";
++		reg = <0x14>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&touch_gpio>;
++		goodix,rst-gpio = <&gpio0 RK_PB6 GPIO_ACTIVE_HIGH>;
++		goodix,irq-gpio = <&gpio0 RK_PB5 IRQ_TYPE_LEVEL_LOW>;
++	};*/
++};
++
++
++&spi3 {
++	status = "okay";
++	max-freq = <48000000>;
++	dma-names = "tx","rx";
++	pinctrl-names = "default", "high_speed";
++	pinctrl-0 = <&spi3m1_cs0 &spi3m1_pins>;
++	pinctrl-1 = <&spi3m1_cs0 &spi3m1_pins_hs>;
++	spi_test@10 {
++		compatible ="rockchip,spi_test_bus1_cs0";
++		reg = <0>;
++		spi-max-frequency = <24000000>;
++		status = "okay";
++	};
++};
++
++&pwm0 {
++	status = "okay";
++};
++
++&pwm8 {
++	status = "okay";
++};
++
++&pwm9 {
++	status = "okay";
++};
++
++&pwm14 {
++	status = "okay";
++};
++
++//pwd 15遥控器
++&pwm15 {
++	status = "okay";
++	compatible = "rockchip,remotectl-pwm";
++	remote_pwm_id = <3>;
++	handle_cpu_id = <1>;
++	remote_support_psci = <0>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&pwm15m0_pins>;
++
++	//用户自定方法：adb设置输出日志并通过dmesg确定usercode=address与key_table=command
++	//echo 1 > sys/module/rockchip_pwm_remotectl/parameters/code_print
++	//键值可在 include/dt-bindings/input/linux-event-codes.h 中查找
++	ir_key1 {
++		rockchip,usercode = <0xff00>;
++		rockchip,key_table =
++			<0xf2	KEY_MENU>,
++			<0xe9	KEY_BACK>,
++			<0xe3	KEY_ENTER>,
++			<0xe7	KEY_UP>,
++			<0xad	KEY_DOWN>,
++			<0xf7	KEY_LEFT>,
++			<0xa5	KEY_RIGHT>,
++			<0xba	KEY_1>,
++			<0xb9	KEY_2>,
++			<0xb8	KEY_3>,
++			<0xbb	KEY_4>,
++			<0xbf	KEY_5>,
++			<0xbc	KEY_6>,
++			<0xf8	KEY_7>,
++			<0xea	KEY_8>,
++			<0xf6	KEY_9>,
++			<0xe6	KEY_0>;
++	};
++};
++
+diff --git a/arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-linux.dts b/arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-linux.dts
+index 97da688286b2..e7fd845e8afd 100755
+--- a/arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-linux.dts
++++ b/arch/arm64/boot/dts/rockchip/tspi-rk3566-user-v10-linux.dts
+@@ -34,15 +34,15 @@
+ 
+ //【开/关】mipi 显示屏幕配置，用户可以基于此复制自己的屏幕，注意EDP与MIPI屏幕互斥，因为共用了VOP如果需要同显自行修改
+ // #include "tspi-rk3566-dsi-v10.dtsi"
+-
++#include "tspi-rk3566-dsi-v10-07255F.dtsi"
+ //【开/关】HDMI 显示屏幕配置，里面内容几乎可以不用动，如果不需要hdmi显示直接注释掉即可
+-#include "tspi-rk3566-hdmi-v10.dtsi"
++// #include "tspi-rk3566-hdmi-v10.dtsi"
+ 
+ //【开/关】摄像头 目前视频的是ov5659
+ #include "tspi-rk3566-csi-v10.dtsi"
+ 
+ //【开/关】网口 扩展板上使用的是千兆网，不接扩展板情况下可以关闭
+-// #include "tspi-rk3566-gmac1-v10.dtsi"
++#include "tspi-rk3566-gmac1-v10.dtsi"
+ 
+ //【开/关】下方是用户定义层，所有用户修改理论上在此下方修改就好了
+ / {
+@@ -80,13 +80,48 @@
+ 			linux,blink-delay-off = <1500>;
+ 		};
+ 	};
++	
++	vcc5v0_ex39_host: vcc5v0-ex39-host-regulator {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc5v0_ex39_host";
++		regulator-boot-on;
++		regulator-always-on;
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		enable-active-high;
++		gpio = <&gpio0 RK_PA5 GPIO_ACTIVE_HIGH>;
++		vin-supply = <&vcc5v0_usb>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&ex39_usb_vcc5v0_host_en>;
++	};	
++
++};
++
++&usbhost_dwc3 {
++	phys = <&u2phy0_host>; 
++	phy-names = "usb2-phy";
++	maximum-speed = "high-speed"; 
++	status = "okay";
++};
++&combphy1_usq {
++	rockchip,dis-u3otg1-port; 
++	status = "okay";
++};
+ 
++&sata1 {
++	rockchip,enable-ssc;
++	status = "okay";
+ };
+ 
+ &pinctrl {
+ 	headphone {
+ 		hp_det: hp-det {
+-			rockchip,pins = <0 RK_PC5 RK_FUNC_GPIO &pcfg_pull_none>;
++			rockchip,pins = <0 RK_PC5 RK_FUNC_GPIO &pcfg_pull_down>;
++		};
++	};
++	ex39_usb {
++		ex39_usb_vcc5v0_host_en: ex39-usb-vcc5v0-host-en {
++			rockchip,pins = <0 RK_PA5 RK_FUNC_GPIO &pcfg_pull_up>;
+ 		};
+ 	};
+ };
+@@ -98,7 +133,7 @@
+ 
+ //耳机插入检测，不使用扩展板情况需关闭，否则默认会检测到耳机插入
+ &rk_headset {
+-	status = "disabled";
++	status = "okay";
+ };
+ 
+ //用户串口3
+@@ -121,6 +156,10 @@
+ 		goodix,rst-gpio = <&gpio0 RK_PB6 GPIO_ACTIVE_HIGH>;
+ 		goodix,irq-gpio = <&gpio0 RK_PB5 IRQ_TYPE_LEVEL_LOW>;
+ 	};*/
++	icm45686:imu@68{
++		compatible = "invensense,icm45686";
++		reg = <0x68>;
++	};
+ };
+ 
+ &i2c3 {
+diff --git a/drivers/input/touchscreen/gt9xx/gt9xx.c b/drivers/input/touchscreen/gt9xx/gt9xx.c
+index 67b1b3451dab..9efcd079dc49 100644
+--- a/drivers/input/touchscreen/gt9xx/gt9xx.c
++++ b/drivers/input/touchscreen/gt9xx/gt9xx.c
+@@ -2102,8 +2102,10 @@ static s8 gtp_request_input_dev(struct i2c_client *client,
+     input_set_abs_params(ts->input_dev, ABS_X, 0, ts->abs_x_max, 0, 0);
+     input_set_abs_params(ts->input_dev, ABS_Y, 0, ts->abs_y_max, 0, 0);
+ #endif
+-    input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, ts->abs_x_max, 0, 0);
+-    input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, ts->abs_y_max, 0, 0);
++    //input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, 1080, 0, 0);
++    //input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, 1920, 0, 0);
++	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, 800, 0, 0);  //akiva
++    input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, 1280, 0, 0); //akiva
+     input_set_abs_params(ts->input_dev, ABS_MT_WIDTH_MAJOR, 0, 255, 0, 0);
+     input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
+     input_set_abs_params(ts->input_dev, ABS_MT_TRACKING_ID, 0, 255, 0, 0);
+@@ -2654,8 +2656,8 @@ static int goodix_ts_probe(struct i2c_client *client, const struct i2c_device_id
+ 	if (val == 89) {
+ 		m89or101 = TRUE;
+ 		gtp_change_x2y = TRUE;
+-		gtp_x_reverse = FALSE;
+-		gtp_y_reverse = TRUE;
++		gtp_x_reverse = TRUE;
++		gtp_y_reverse = FALSE;
+ 	} else if (val == 101) {
+ 		m89or101 = FALSE;
+ 		gtp_change_x2y = TRUE;
