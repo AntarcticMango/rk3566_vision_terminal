@@ -12,7 +12,9 @@
  * or:
  *   aarch64-linux-gnu-gcc -O2 -Wall -Wextra -o device_manager device_manager.c
  */
-
+//adb push device_manager /usr/bin/device_manager
+//adb shell chmod +x /usr/bin/device_manager
+//
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <dirent.h>
