@@ -41,6 +41,7 @@
 
 - 完成device_manager.c的文件的编写和验证
 - device_manager可以对
+```
 Device Manager 状态聚合：完成
 A/B 槽位识别：完成
 WiFi/IP 状态识别：完成
@@ -48,21 +49,17 @@ WiFi/IP 状态识别：完成
 OTA idle 状态输出：完成
 CAN 接口预留：完成
 JSON 输出：完成
-
+```
 ### 当前状态
 
-- 当前主分支：`main`
+- 当前分支：
+```bash
+```
 - 当前项目已成功推送到 GitHub
-- `ota_slotctl` 已有基础代码和 Makefile
-- OTA A/B RootFS 项目处于初始验证阶段
+
 
 ### 当前问题
 
-- `ota_slotctl` 目前还需要继续增强
-- 需要进一步支持读取 `misc` 分区中的 A/B 槽位信息
-- 需要实现设置 inactive slot 的能力
-- SWUpdate OTA 包生成流程还需要脚本化
-- 失败回滚策略还未实现
 
 ### 下一步
 
