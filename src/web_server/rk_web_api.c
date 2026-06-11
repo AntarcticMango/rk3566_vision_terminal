@@ -13,6 +13,8 @@
  *      GET /api/ota/status
  *      GET /api/vision/status
  *      GET /api/logs
+ *      GET /video
+ *      GET /hls/stream.m3u8
  *
  * 多线程设计：
  *  - 主线程负责 accept()
@@ -107,6 +109,40 @@ static void thread_log(const char *fmt, ...)
 }
 
 /*
+ * send_bytes()
+ *
+ * 作用：
+ *  按指定长度向客户端发送二进制数据。
+ *
+ * 为什么需要它？
+ *  原来的 send_all() 适合发送字符串，因为它使用 strlen()。
+ *  但 HLS 的 .ts 分片是二进制文件，内容中可能包含 '\0'。
+ *  如果继续用 strlen()，会导致视频分片发送不完整。
+ */
+static int send_bytes(int client, const void *data, size_t len)
+{
+    const char *p = (const char *)data;
+    size_t total = 0;
+    ssize_t sent;
+
+    if (data == NULL) {
+        return -1;
+    }
+
+    while (total < len) {
+        sent = send(client, p + total, len - total, 0);
+
+        if (sent <= 0) {
+            return -1;
+        }
+
+        total += sent;
+    }
+
+    return 0;
+}
+
+/*
  * send_all()
  *
  * 作用：
@@ -118,25 +154,11 @@ static void thread_log(const char *fmt, ...)
  */
 static void send_all(int client, const char *data)
 {
-    size_t total = 0;
-    size_t len;
-    ssize_t sent;
-
     if (data == NULL) {
         return;
     }
 
-    len = strlen(data);
-
-    while (total < len) {
-        sent = send(client, data + total, len - total, 0);
-
-        if (sent <= 0) {
-            return;
-        }
-
-        total += sent;
-    }
+    send_bytes(client, data, strlen(data));
 }
 
 /*
@@ -281,6 +303,255 @@ static void send_command_response(int client, const char *cmd, const char *conte
 {
     send_http_header(client, content_type);
     send_command_output_body(client, cmd);
+}
+
+/*
+ * get_content_type()
+ *
+ * 作用：
+ *  根据文件扩展名返回 HTTP Content-Type。
+ *
+ * 当前主要用于 HLS：
+ *  - .m3u8 播放列表
+ *  - .ts   视频分片
+ */
+static const char *get_content_type(const char *path)
+{
+    const char *ext = strrchr(path, '.');
+
+    if (ext == NULL) {
+        return "application/octet-stream";
+    }
+
+    if (strcmp(ext, ".m3u8") == 0) {
+        return "application/vnd.apple.mpegurl";
+    }
+
+    if (strcmp(ext, ".ts") == 0) {
+        return "video/MP2T";
+    }
+
+    if (strcmp(ext, ".html") == 0) {
+        return "text/html; charset=utf-8";
+    }
+
+    if (strcmp(ext, ".js") == 0) {
+        return "application/javascript";
+    }
+
+    if (strcmp(ext, ".css") == 0) {
+        return "text/css";
+    }
+
+    return "application/octet-stream";
+}
+
+/*
+ * serve_hls_file()
+ *
+ * 作用：
+ *  把 URL /hls/... 映射到板端 /tmp/hls/...，
+ *  从而让浏览器可以通过当前 Web Server 访问 HLS 视频流。
+ *
+ * 例如：
+ *  GET /hls/stream.m3u8
+ *      -> /tmp/hls/stream.m3u8
+ *
+ *  GET /hls/segment00001.ts
+ *      -> /tmp/hls/segment00001.ts
+ *
+ * 安全限制：
+ *  禁止路径中出现 ".."，防止目录穿越攻击。
+ */
+static void serve_hls_file(int client, const char *url_path)
+{
+    char file_path[512];
+    char header[512];
+    char buf[4096];
+
+    struct stat st;
+    int fd;
+
+    if (strstr(url_path, "..") != NULL) {
+        send_all(client,
+            "HTTP/1.1 403 Forbidden\r\n"
+            "Server: rk3566-web-api\r\n"
+            "Connection: close\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: 9\r\n"
+            "\r\n"
+            "Forbidden"
+        );
+        return;
+    }
+
+    /*
+     * URL 路径必须以 /hls/ 开头。
+     */
+    if (strncmp(url_path, "/hls/", 5) != 0) {
+        send_404(client);
+        return;
+    }
+
+    /*
+     * 映射规则：
+     *  /hls/xxx -> /tmp/hls/xxx
+     */
+    snprintf(file_path, sizeof(file_path), "/tmp%s", url_path);
+
+    fd = open(file_path, O_RDONLY);
+
+    if (fd < 0) {
+        send_all(client,
+            "HTTP/1.1 404 Not Found\r\n"
+            "Server: rk3566-web-api\r\n"
+            "Connection: close\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: 9\r\n"
+            "\r\n"
+            "Not Found"
+        );
+        return;
+    }
+
+    if (fstat(fd, &st) < 0 || !S_ISREG(st.st_mode)) {
+        close(fd);
+
+        send_all(client,
+            "HTTP/1.1 500 Internal Server Error\r\n"
+            "Server: rk3566-web-api\r\n"
+            "Connection: close\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: 12\r\n"
+            "\r\n"
+            "Server Error"
+        );
+        return;
+    }
+
+    snprintf(header, sizeof(header),
+        "HTTP/1.1 200 OK\r\n"
+        "Server: rk3566-web-api\r\n"
+        "Connection: close\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Cache-Control: no-cache\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %ld\r\n"
+        "\r\n",
+        get_content_type(file_path),
+        (long)st.st_size
+    );
+
+    send_all(client, header);
+
+    while (1) {
+        ssize_t n = read(fd, buf, sizeof(buf));
+
+        if (n <= 0) {
+            break;
+        }
+
+        if (send_bytes(client, buf, (size_t)n) < 0) {
+            break;
+        }
+    }
+
+    close(fd);
+}
+
+/*
+ * api_video_page()
+ *
+ * GET /video
+ *
+ * 返回一个最小网页：
+ *  - 使用 hls.js 播放 /hls/stream.m3u8
+ *  - 适合 Day4 演示“网页直接看摄像头画面”
+ *
+ * 注意：
+ *  hls.js 来自 CDN，所以 PC 浏览器需要能访问互联网。
+ *  如果没有互联网，可以后续把 hls.min.js 下载后放到板端本地提供。
+ */
+static void api_video_page(int client)
+{
+    const char *html =
+        "<!DOCTYPE html>\n"
+        "<html>\n"
+        "<head>\n"
+        "  <meta charset=\"utf-8\">\n"
+        "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+        "  <title>RK3566 Vision Stream</title>\n"
+        "  <script src=\"https://cdn.jsdelivr.net/npm/hls.js@latest\"></script>\n"
+        "  <style>\n"
+        "    body { background:#111; color:#eee; font-family:Arial, sans-serif; text-align:center; margin:0; }\n"
+        "    header { padding:20px; background:#1d1d1d; }\n"
+        "    h1 { margin:0; font-size:24px; }\n"
+        "    video { width:90%; max-width:960px; margin-top:24px; background:#000; border:1px solid #333; }\n"
+        "    .info { margin:18px auto; width:90%; max-width:960px; text-align:left; color:#ccc; font-size:14px; }\n"
+        "    code { color:#8fd; }\n"
+        "  </style>\n"
+        "</head>\n"
+        "<body>\n"
+        "  <header>\n"
+        "    <h1>RK3566 Vision Stream</h1>\n"
+        "  </header>\n"
+        "\n"
+        "  <video id=\"video\" controls autoplay muted playsinline></video>\n"
+        "\n"
+        "  <div class=\"info\">\n"
+        "    <p>HLS URL: <code>/hls/stream.m3u8</code></p>\n"
+        "    <p>Status API: <code>/api/vision/status</code></p>\n"
+        "    <p id=\"status\">Loading...</p>\n"
+        "  </div>\n"
+        "\n"
+        "  <script>\n"
+        "    const video = document.getElementById('video');\n"
+        "    const statusEl = document.getElementById('status');\n"
+        "    const videoSrc = '/hls/stream.m3u8';\n"
+        "\n"
+        "    function setStatus(msg) {\n"
+        "      statusEl.textContent = msg;\n"
+        "    }\n"
+        "\n"
+        "    if (window.Hls && Hls.isSupported()) {\n"
+        "      const hls = new Hls({ lowLatencyMode: true });\n"
+        "      hls.loadSource(videoSrc);\n"
+        "      hls.attachMedia(video);\n"
+        "      hls.on(Hls.Events.MANIFEST_PARSED, function () {\n"
+        "        setStatus('HLS manifest loaded. Playing video...');\n"
+        "        video.play().catch(function () {});\n"
+        "      });\n"
+        "      hls.on(Hls.Events.ERROR, function (event, data) {\n"
+        "        setStatus('HLS error: ' + data.type + ' / ' + data.details);\n"
+        "      });\n"
+        "    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {\n"
+        "      video.src = videoSrc;\n"
+        "      video.addEventListener('loadedmetadata', function () {\n"
+        "        setStatus('Native HLS loaded. Playing video...');\n"
+        "        video.play().catch(function () {});\n"
+        "      });\n"
+        "    } else {\n"
+        "      setStatus('This browser does not support HLS. Please use Chrome/Edge with hls.js available.');\n"
+        "    }\n"
+        "  </script>\n"
+        "</body>\n"
+        "</html>\n";
+
+    char header[256];
+
+    snprintf(header, sizeof(header),
+        "HTTP/1.1 200 OK\r\n"
+        "Server: rk3566-web-api\r\n"
+        "Connection: close\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n"
+        "Content-Length: %ld\r\n"
+        "\r\n",
+        (long)strlen(html)
+    );
+
+    send_all(client, header);
+    send_all(client, html);
 }
 
 /*
@@ -545,7 +816,10 @@ static void api_logs(int client)
         "tail -n 50 /tmp/web_api.log 2>/dev/null || echo 'no /tmp/web_api.log'; "
         "echo ''; "
         "echo '===== ota.log ====='; "
-        "tail -n 50 /tmp/ota.log 2>/dev/null || echo 'no /tmp/ota.log'"
+        "tail -n 50 /tmp/ota.log 2>/dev/null || echo 'no /tmp/ota.log'; "
+        "echo ''; "
+        "echo '===== vision_service.log ====='; "
+        "tail -n 50 /tmp/vision_service.log 2>/dev/null || echo 'no /tmp/vision_service.log'"
     );
 }
 
@@ -606,9 +880,13 @@ static void handle_client(int client)
     }
 
     /*
-     * REST API 路由分发。
+     * REST API / HLS 路由分发。
      */
-    if (strcmp(path, "/") == 0) {
+    if (strcmp(path, "/video") == 0) {
+        api_video_page(client);
+    } else if (strncmp(path, "/hls/", 5) == 0) {
+        serve_hls_file(client, path);
+    } else if (strcmp(path, "/") == 0) {
         api_index(client);
     } else if (strcmp(path, "/api/status") == 0) {
         api_status(client);
@@ -746,6 +1024,8 @@ int main(int argc, char *argv[])
     printf("  GET /api/ota/status\n");
     printf("  GET /api/vision/status\n");
     printf("  GET /api/logs\n");
+    printf("  GET /video\n");
+    printf("  GET /hls/stream.m3u8\n");
 
     /*
      * 主线程循环 accept。
